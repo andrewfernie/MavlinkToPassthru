@@ -186,8 +186,8 @@ v0.30 2019-07-09 For PX4 flight stack only, send HB to FC every 2 seconds
 //#define Target_Board   2      // Maple_Mini STM32F103C   OR un-comment this line if you are using a Maple_Mini STM32F103C
 
 // Choose one (only) of these three modes
-#define Ground_Mode          // Converter between Taranis and LRS tranceiver (like Orange)
-//#define Air_Mode             // Converter between FrSky receiver (like XRS) and Flight Controller (like Pixhawk)
+//#define Ground_Mode          // Converter between Taranis and LRS tranceiver (like Orange)
+#define Air_Mode             // Converter between FrSky receiver (like XRS) and Flight Controller (like Pixhawk)
 //#define Relay_Mode           // Converter between LRS tranceiver (like Orange) and FrSky receiver (like XRS) in relay box on the ground
 
 //#define Battery_mAh_Source  1  // Get battery mAh from the FC - note both RX and TX lines must be connected      
@@ -260,7 +260,7 @@ uint8_t BufLedState = LOW;
 
 // Debugging options below ***************************************************************************************
 //#define Mav_Debug_All
-//#define Frs_Debug_All
+#define Frs_Debug_All
 //#define Frs_Debug_Payload
 //#define Mav_Debug_RingBuff
 //#define Debug_Air_Mode
