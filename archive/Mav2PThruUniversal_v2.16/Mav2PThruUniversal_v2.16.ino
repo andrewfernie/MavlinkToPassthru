@@ -183,8 +183,12 @@ v2.16 2019-07-18 Increase time burden for each successive Status Text chunk by 5
                
 */
 
+#undef F                         // F defined in c_library_v2\mavlink_sha256.h AND teensy3/WString.h
+
 #include <CircularBuffer.h>
-#include <..\c_library_v2\ardupilotmega\mavlink.h>
+#include <mavlink_types.h>
+#include <common/mavlink.h>
+#include <ardupilotmega/ardupilotmega.h>
 
 using namespace std;
 
@@ -216,8 +220,8 @@ using namespace std;
 #define PlusVersion  // Added support for 0x5009 Mission WPs, 0x50F1 Servo_Channels, 0x50F2 VFR_Hud
 
 // Choose one only of these three modes
-#define Ground_Mode          // Converter between Taranis and LRS tranceiver (like Orange)
-//#define Air_Mode             // Converter between FrSky receiver (like XRS) and Flight Controller (like Pixhawk)
+//#define Ground_Mode          // Converter between Taranis and LRS tranceiver (like Orange)
+#define Air_Mode             // Converter between FrSky receiver (like XRS) and Flight Controller (like Pixhawk)
 //#define Relay_Mode           // Converter between LRS tranceiver (like Orange) and FrSky receiver (like XRS) in relay box on the ground
 
 

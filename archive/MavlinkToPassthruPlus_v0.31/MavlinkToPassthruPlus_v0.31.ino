@@ -172,8 +172,12 @@ v0.29 2019-07-08 Combine ULRS & QLRS in #define LRS_RSSI to use rssi from #35. A
 v0.30 2019-07-09 For PX4 flight stack only, send HB to FC every 2 seconds                                                       
 */
 
+#undef F                         // F defined in c_library_v2\mavlink_sha256.h AND teensy3/WString.h
 #include <CircularBuffer.h>
-#include <..\c_library_v2\ardupilotmega\mavlink.h>          
+
+#include <mavlink_types.h>
+#include <common/mavlink.h>
+#include <ardupilotmega/ardupilotmega.h>      
 
 //************************************* Please select your options here before compiling **************************
 // Choose one (only) of these target boards
