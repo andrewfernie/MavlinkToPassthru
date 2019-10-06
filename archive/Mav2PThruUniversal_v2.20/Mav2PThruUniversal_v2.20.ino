@@ -186,7 +186,7 @@ v2.20 2019-07-26 Release candidate. Send HB back to FC for APM also, not just PX
                  #undef troublesome F function.             
 */
 
-//#undef F                         // F defined in c_library_v2\mavlink_sha256.h AND teensy3/WString.h
+#undef F                         // F defined in c_library_v2\mavlink_sha256.h AND teensy3/WString.h
 #include <CircularBuffer.h>
 
 #include <mavlink_types.h>
