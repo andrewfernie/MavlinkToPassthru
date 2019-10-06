@@ -1,6 +1,6 @@
   /*  *****************************************************************************
 
-    Mav2Passthru (Mav2PT)
+    Mav2PT  (Mav2Passthru)
  
     This application is free software. You may redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -214,10 +214,13 @@ v2.26 2019-08-31 Improved GCS to FC debugging. Make baud rate sensing optional.
 v2.27 2019-09-13 Small additions to test LILYGO®_TTGO_MINI32_ESP32-WROVER_B
 v2.28 2019-09-17 Localise pin definitions in one place to define ESP32 variants more easily
 v2.29 2019-09-24 Use #if (TargetBoard == 3) to define soft pins for mvSerialFC
-
+v2.30 2019-09-26 Don't push #5007 into sensor table from #147. Push from #1 only.
+v2.31 2019-09-30 Configurable declarations moved to config.h file
 */
 
+
 #undef F                         // F defined in c_library_v2\mavlink_sha256.h AND teensy3/WString.h
+#include "config.h"
 #include <CircularBuffer.h>
 
 #include <mavlink_types.h>
@@ -225,431 +228,6 @@ v2.29 2019-09-24 Use #if (TargetBoard == 3) to define soft pins for mvSerialFC
 #include <ardupilotmega/ardupilotmega.h>
 
 using namespace std;
-
-// Debugging options below ***************************************************************************************
-//#define Mav_Debug_All
-//#define Frs_Debug_All
-//#define Frs_Debug_Period
-//#define Frs_Debug_Payload
-//#define Mav_Debug_RingBuff
-//#define Debug_Air_Mode
-//#define Mav_List_Params      // Use this to test uplink to Flight Controller 
-//#define Debug_BT    
-//#define Debug_FC             // traffic down from FC to Ring Buffer
-//#define Debug_GCS_Down       // traffic from RB to GCS
-//#define Debug_GCS_Up         // traffic up from GCS to FC
-//#define Mav_Debug_Params
-//#define Mav_Debug_Servo
-//#define Frs_Debug_Servo
-//#define Debug_Rssi
-//#define Mav_Debug_RC
-//#define Frs_Debug_RC
-//#define Mav_Debug_FC_Heartbeat
-//#define Mav_Debug_GCS_Heartbeat
-//#define Mav_Debug_Mav2PT_Heartbeat
-//#define Frs_Debug_Params
-//#define Frs_Debug_APStatus
-//#define Mav_Debug_SysStatus
-//#define Debug_Batteries
-//#define Frs_Debug_Home
-//#define Mav_Debug_GPS_Raw     // #24
-//#define Mav_Debug_GPS_Int     // #33
-//#define Frs_Debug_LatLon
-//#define Frs_Debug_YelYaw
-//#define Frs_Debug_GPS_Status
-//#define Mav_Debug_Raw_IMU
-//#define Mav_Debug_Hud
-//#define Frs_Debug_Hud
-//#define Mav_Debug_Scaled_Pressure
-//#define Mav_Debug_Attitude
-//#define Frs_Debug_Attitude
-//#define Mav_Debug_StatusText
-//#define Frs_Debug_Status_Text    
-///#define Mav_Debug_Mission 
-//#define Frs_Debug_Mission   
-//#define Debug_SD    
-//#define Mav_Debug_System_Time   
-//#define Frs_Debug_Scheduler - this debugger affects the performance of the scheduler when activated
-//#define Decode_Non_Essential_Mav 
-//#define Debug_Baud 
-//#define Debug_Radio_Status  
-//#define Debug_Mission_Request_Int 
-//#define Debug_GCS_Unknown
-//*****************************************************************************************************************
-// ******************************************* Auto Determine Target Board *****************************************
-//
-//                Don't change anything here
-//
-#if defined (__MK20DX256__) 
-  #define Target_Board   0      // Teensy 3.1 and 3.2    
-      
-#elif defined (__BluePill_F103C8__) ||  defined (MCU_STM32F103RB)
-  #define Target_Board   1      // Blue Pill STM32F103C  
-         
-#elif defined STM32_MEDIUM_DENSITY
-  #define Target_Board   2      // Maple_Mini STM32F103C  
-     
-#elif defined STM32_HIGH_DENSITY
-  // LeafLabs high density
-  #define Target_Board   2      // Maple_Mini 
-  
-#elif defined ESP32
-  #define Target_Board   3      // Espressif ESP32 Dev Module
-  
-#else
-  #error "No board type defined!"
-#endif
-
-
-// *****************************************************************************************************************
-// *****************************************************************************************************************
-// ******************************* Please select your options below before compiling *******************************
-
-// Do not enable for FlightDeck
-#define PlusVersion  // Added support for 0x5009 Mission WPs, 0x50F1 Servo_Channels, 0x50F2 VFR_Hud
-
-// Choose one only of these three modes
-//#define Ground_Mode          // Converter between Taranis and LRS tranceiver (like Orange)
-#define Air_Mode             // Converter between FrSky receiver (like XRS) and Flight Controller (like Pixhawk)
-//#define Relay_Mode           // Converter between LRS tranceiver (like Orange) and FrSky receiver (like XRS) in relay box on the ground
-
-
-// Choose one only of these Flight-Controller-side I/O channels 
-// How does Mavlink telemetry enter the converter?
-#define FC_Mavlink_IO  0    // Serial Port (default)         
-//#define FC_Mavlink_IO  1    // BlueTooth Classic - ESP32 only
-//#define FC_Mavlink_IO  2    // WiFi - ESP32 only
-//#define FC_Mavlink_IO  3    // SD Card / TF - ESP32 only
-
-
-// Choose one only of these GCS-side I/O channels
-// How does Mavlink telemetry leave the converter?
-// These are optional, and in addition to the S.Port telemetry output
-//#define GCS_Mavlink_IO  9    // NONE (default)
-//#define GCS_Mavlink_IO  0    // Serial Port  - Only Teensy 3.x and Maple Mini  have Serial3     
-//#define GCS_Mavlink_IO  1    // BlueTooth Classic - ESP32 only
-//#define GCS_Mavlink_IO  2    // WiFi - ESP32 only
-
-
-//#define GCS_Mavlink_SD      // SD Card  - for ESP32 only
-
-
-//#define Start_WiFi         // Start WiFi at startup, override startWiFi Pin
-
-
-// Choose one protocol - for ESP32 only
-//#define WiFi_Protocol 1    // TCP/IP
-#define WiFi_Protocol 2    // UDP     useful for Ez-WiFiBroadcast in STA mode
-
-// Choose one mode - AP means advertise as an access point (hotspot). STA means connect to a known host
-#define WiFi_Mode   1  //AP            
-//#define WiFi_Mode   2  // STA
-
-
-//#define Battery_mAh_Source  1  // Get battery mAh from the FC - note both rx and tx lines must be connected      
-//#define Battery_mAh_Source  2  // Define bat1_capacity and bat2_capacity below and use those 
-const uint16_t bat1_capacity = 5200;       
-const uint16_t bat2_capacity = 0;
-#define Battery_mAh_Source  3  // Define battery mAh in the LUA script on the Taranis/Horus - Recommended
-
-#define SPort_Serial        1         // The default is Serial 1, but 3 is possible 
-
-#define RSSI_Source         0         // default FrSky receiver
-//#define RSSI_Source         1         // Designated RC PWM channel - ULRS, QLRS, Dragonlink ....
-//#define RSSI_Source         2         // RFD900x - frame #109 injected by SiK radio firmware into Mavlink stream
-//#define RSSI_Source         3         // Dummy RSSI - fixed at 70%
-
-// Status_Text messages place a huge burden on the meagre 4 byte FrSky telemetry payload bandwith
-// The practice has been to send them 3 times to ensure that they arrive unscathed at the receiver
-//  but that makes the bandwidth limitation worse and may crowd out other message types. Try without
-//  sending 3 times, but if status_text gets distorted, un-comment this line
-//#define Send_Status_Text_3_Times
-//#define Send_Sensor_Health_Messages
-//#define AutoBaud                    // Auto detect telemetry baud - takes a few seconds
-
-// ****************************** Set your time zone here ******************************************
-// Date and time determines the TLog file name
-//const float Time_Zone = 10.5;    // Adelaide
-const float Time_Zone = 2.0;    // Jo'burg
-bool daylightSaving = false;
-
-//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-//^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-
-// Check #defines options logic  
-
-#if defined PlusVersion
-  #define Request_Mission_Count_From_FC // Needed for yaapu's mission/waypoint script
-#endif
-
-#if (Target_Board == 3) 
-  #include <iostream> 
-  #include <sstream> 
-#endif
-
-  #ifndef Target_Board
-    #error Please choose at least one target board
-  #endif
-
-    #ifndef RSSI_Source
-    #error Please choose a RSSI_Source
-  #endif
-  
-  #if (Target_Board == 1) || (Target_Board == 3) // Blue Pill or ESP32 (UART0, UART1, and UART2)
-    #if (SPort_Serial  == 3)    
-      #error Board does not have Serial3. This configuration is not possible.
-    #endif
-  #endif
-
-  #ifndef Battery_mAh_Source
-    #error Please choose at least one Battery_mAh_Source
-  #endif
-
-  #if (Target_Board != 3) 
-     #if (FC_Mavlink_IO == 1) || (GCS_Mavlink_IO == 1) || (FC_Mavlink_IO == 2) || (GCS_Mavlink_IO == 2)
-       #error WiFi or Bluetooth work only on an ESP32 board
-     #endif  
-  #endif
-  
-    #ifndef GCS_Mavlink_IO
-      #define GCS_Mavlink_IO  9    // NONE (default)
-    #endif
-  
-    #ifndef FC_Mavlink_IO
-      #error Please choose at least one Mavlink FC IO channel
-    #endif
-
-    #if (Target_Board == 3)
-      #ifndef WiFi_Mode 
-        #error Please define WiFi_Mode
-      #endif
-    #endif  
-
-    #if (Target_Board == 3)
-      #ifndef WiFi_Protocol
-        #error Please define WiFi_Protocol
-      #endif
-    #endif
-
-//#define Request_Missions_From_FC    // Un-comment if you need mission waypoint from FC - NOT NECESSARY RIGHT NOW
-
-
-//********************************************* LEDS, OLED SSD1306, rx pin **************************************
-
-  
-#if (Target_Board == 0)           // Teensy3x
-  #define MavStatusLed  13
-  #define BufStatusLed  1
-  #define FC_Mav_rxPin  9  
-  #define FC_Mav_txPin  10
- // Fr_txPin (SPort)    1            Hard wired single wire to Taranis/Horus or XSR receiver
-#elif (Target_Board == 1)         // Blue Pill
-  #define MavStatusLed  PC13
-  #define BufStatusLed  PC14
-  #define FC_Mav_rxPin  PB11  
-  #define FC_Mav_txPin  PB10  
- // Fr_txPin (SPort)    PA2          SPort hard wired tx to inverter/converter
- // Fr_txPin (SPort)    PA3          SPort hard wired rx to inverter/converter 
-#elif (Target_Board == 2)         // Maple Mini
-  #define MavStatusLed  33        // PB1
-  #define BufStatusLed  34 
-  #define FC_Mav_rxPin  8         // PA3  
-  #define FC_Mav_txPin  9         // PA2 
- // Fr_txPin (SPort)    PA10         SPort hard wired tx to inverter/converter 
- // Fr_txPin (SPort)    PA9          SPort hard wired rx to inverter/converter   
-#elif (Target_Board == 3)         // ESP32 Dev Module V2
-  #define MavStatusLed  02        // Dev Board=02, TTGO OLED Battery board = 16, LilyGo Mini32 = No Onboard LED
-  #define BufStatusLed  13          
-  #define FC_Mav_rxPin  16        // Dev Board = 16, LilyGo Mini32 WROVER_B Dev4 = 26
-  #define FC_Mav_txPin  17        // Dev Board = 17, LilyGo Mini32 WROVER_B Dev4 = 27 
-  #define Fr_rxPin      12        // SPort - Dev Board = 12 - Use both for Air Mode or Relay Mode to inverter/converter
-  #define Fr_txPin      14        // SPort - Dev Board = 14 - Use me for Ground Mode to Taranis/Horus 
-  
-  #include <SPI.h>                // for SD card or OLED
-  #include <Wire.h>
-  #include <Adafruit_SSD1306.h> 
-
-  //  Put your SCL / SDA pin numbers for your OLED board here
-  #define SDA            21      // Dev board = 21 
-  #define SCL            22      // Dev board = 22   
-  #define i2cAddr        0x3C
-
-  /*
-  // Optional SPI interface pins for SD card adapter or SSD1306 OLED display
-  #define CS            5        
-  #define MOSI          23 
-  #define MISO          19 
-  #define SCK           18 
-  */  
-  
-  #define SCREEN_WIDTH 128 // OLED display width, in pixels
-  #define SCREEN_HEIGHT 64 // OLED display height, in pixels
-  // 8 rows of 21 characters
-
-  // Declaration for an SSD1306 display connected to I2C 
-  #define OLED_RESET    -1 // Reset pin # (or -1 if sharing Arduino reset pin)
-  Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
-  
-#endif
-
-//************************************************************************** 
-//******************************** Bluetooth  *******************************
-  #if (FC_Mavlink_IO == 1) || (GCS_Mavlink_IO == 1)  // Bluetooth
-    #if (Target_Board == 3) // ESP32
-      #include "BluetoothSerial.h"
-      #if !defined(CONFIG_BT_ENABLED) || !defined(CONFIG_BLUEDROID_ENABLED)
-        #error Bluetooth is not enabled! Please run `make menuconfig in ESP32 IDF` 
-      #endif
-    #else
-      #error Bluetooth only available on ESP32
-    #endif    
-#endif
-
-///************************************************************************** 
-//********************************** WiFi ***********************************
-  #if ((FC_Mavlink_IO == 2) || (GCS_Mavlink_IO == 2))  // WiFi
-  
-    #include <WiFi.h>  
-    #include <WiFiClient.h>
- 
-    #if (WiFi_Protocol == 2) 
-      #include <WiFiUDP.h>
-    #endif   
-    
-    int16_t wifi_rssi;    
-    uint8_t startWiFiPin = 15;    // D15
-    uint8_t WiFiPinState = 0;
-    
-    #if (WiFi_Mode == 1)  // AP
-      #include <WiFiAP.h>  
-      const char *APssid =    "Mav2Passthru";    // The AP SSID that we advertise  ====>
-      const char *APpw =      "password";        // Change me!
-    #endif
-    
-    #if (WiFi_Mode == 2)  //  STA
-  //    const char *STAssid =     "TargetAPName";    // Target AP to connect to      <====
-  //    const char *STApw =       "targetPw";      // Change me!
-
-  //    const char *STAssid =     "EZ-WifiBroadcast";    // Target AP to connect to      <====
-  //    const char *STApw =       "wifibroadcast";         
-
-      const char *STAssid =     "TXMOD-54-DD-FE";    // Target AP to connect to      <====
-      const char *STApw =       "txmod123";    
-
-    #endif   
-
-    WiFiClient wifi;   
-    
-    #if (WiFi_Protocol == 1)
-      uint16_t tcp_Port = 5760;  
-      WiFiServer server(tcp_Port);
-    #endif 
-    
-    #if (WiFi_Protocol == 2)
-   
-      #if (FC_Mavlink_IO == 2)   // FC side
-        uint16_t udp_localPort = 14550;
-        uint16_t udp_remotePort = 14550;
-        bool FtRemIP = true;
-        IPAddress remoteIP =  (192, 168, 2, 2);   // First guess for EZ-WFB in STA mode. Will adopt IP allocated
-        WiFiServer server(udp_localPort);     
-      #endif
-      
-      #if (GCS_Mavlink_IO == 2)   // QGC side   
-        uint16_t udp_localPort = 14550;
-        uint16_t udp_remotePort = 14550;         
-        bool FtRemIP = true;
-        IPAddress remoteIP =  (192, 168, 4, 2); // We hand out this IP to the first client via DHCP
-        WiFiServer server(udp_localPort);     
-      #endif  
-      
-      WiFiUDP udp;       // Create udp object      
-    #endif   
-    
-    IPAddress localIP;
-
-    
- #endif  
-  
-//************************************************************************** 
-//******************************* SD Card **********************************
-  #if ((FC_Mavlink_IO == 3) || defined GCS_Mavlink_SD)  // SD Card
-
-  // Pins generally   CS=5    MOSI=23   MISO=19   SCK=18    3.3V   GND   Dev Board, LilyGO/TTGO
- 
-  #include "FS.h"
-  #include "SD.h"
-  #include "SPI.h"
-// Rememeber to change SPI frequency from 4E6 to 25E6, i.e 4MHz to 25MHz in SD.h otherwise MavRingBuff fills up 
-// C:\Users\YourUserName\AppData\Local\Arduino15\packages\esp32\hardware\esp32\1.0.2\libraries\SD\src  
-// bool begin(uint8_t ssPin=SS, SPIClass &spi=SPI, uint32_t frequency=25000000, const char * mountpoint="/sd", uint8_t max_files=5);  
-
-char     cPath[40];
-string   fnPath[30];
-uint8_t  fnCnt;
-uint16_t sdReadDelay = 10;  // mS   Otherwise the reads run through unnaturally quickly
-
-File     file;  // Create global object from File class for general use
-
-static  const uint8_t mthdays[]={31,28,31,30,31,30,31,31,30,31,30,31}; 
-
-typedef struct  { 
-  uint16_t yr;   // relative to 1970;  
-  uint8_t mth;
-  uint8_t day;
-  uint8_t dow;   // sunday is day 1 
-  uint8_t hh; 
-  uint8_t mm; 
-  uint8_t ss; 
-}   DateTime_t;
-
-static DateTime_t dt_tm; 
-
-  #endif 
-//************************************************************************** 
-//********************************** Serial ********************************
-#define Debug               Serial         // USB 
-#define frBaud              57600          // Use 57600
-#define mvSerialFC          Serial2        
-uint16_t mvBaudFC     =     57600;         // Default    
-
-#if (Target_Board == 0)      //  Teensy 3.1
- #if (SPort_Serial == 1) 
-  #define frSerial              Serial1        // S.Port 
- #elif (SPort_Serial == 3)
-  #define frSerial              Serial3        // S.Port 
- #else
-  #error SPort_Serial can only be 1 or 3. Please correct.
- #endif 
-#endif 
-
-#if (Target_Board != 0)      //  Not Teensy 3.1, i.e. other boards
-  #define frSerial              Serial1        // S.Port 
-#endif 
-
-#if (GCS_Mavlink_IO == 0) // Mavlink_GCS optional feature available for Teensy 3.1/2 and Maple Mini
-
-  #if (SPort_Serial == 3) 
-   #error Mavlink_GCS and SPort both configured for Serial3. Please correct.
-  #endif 
-  
-  #if (Target_Board == 0) || (Target_Board == 2) // Teensy 3.x or Maple Mini
-    #define mvSerialGCS             Serial3 
-    #define mvBaudGCS               57600        // Use 57600
-  #else
-    #error Mavlink_GCS Serial not avaiable for ESP32 or Blue Pill - no Serial3. Please correct.
-  #endif
-#endif
-
-//************************************************************************** 
-//******************************** Other ***********************************  
-
-//#define Data_Streams_Enabled // Rather set SRn in Mission Planner
-#define Max_Waypoints  256     // Note. This is a global RAM trade-off. If exceeded then Debug message and shut down
-
-
 
 uint8_t   MavLedState = LOW; 
 uint8_t   BufLedState = LOW; 
@@ -1056,7 +634,7 @@ uint32_t fr_bat2_capacity;
 uint32_t fr_mission_count;
 bool     fr_paramsSent = false;
 
-//0x5008 Batt
+//0x5008 Batt2
 float fr_bat2_volts;
 float fr_bat2_amps;
 uint16_t fr_bat2_mAh;
@@ -1150,7 +728,7 @@ void setup()  {
     display.setCursor(0,0);
   
 
-    OledDisplayln("Starting .... ");
+    OledPrintln("Starting .... ");
   #endif
 /*
   display.setFont(Dialog_plain_8);     //  col=24 x row 8  on 128x64 display
@@ -1160,108 +738,108 @@ void setup()  {
   Debug.print("Target Board is ");
   #if (Target_Board == 0) // Teensy3x
     Debug.println("Teensy 3.x");
-    OledDisplayln("Teensy 3.x");
+    OledPrintln("Teensy 3.x");
   #elif (Target_Board == 1) // Blue Pill
     Debug.println("Blue Pill STM32F103C");
-    OledDisplayln("Blue Pill STM32F103C");
+    OledPrintln("Blue Pill STM32F103C");
   #elif (Target_Board == 2) //  Maple Mini
     Debug.println("Maple Mini STM32F103C");
-    OledDisplayln("Maple Mini STM32F103C");
+    OledPrintln("Maple Mini STM32F103C");
   #elif (Target_Board == 3) //  ESP32 Dev Module
     Debug.println("ESP32 Dev Module");
-    OledDisplayln("ESP32 Dev Module");
+    OledPrintln("ESP32 Dev Module");
   #endif
 
   #ifdef Ground_Mode
     Debug.println("Ground Mode");
-    OledDisplayln("Ground Mode");
+    OledPrintln("Ground Mode");
   #endif
   #ifdef Air_Mode
     Debug.println("Air Mode");
-    OledDisplayln("Air Mode");
+    OledPrintln("Air Mode");
   #endif
   #ifdef Relay_Mode
     Debug.println("Relay Mode");
-    OledDisplayln("Relay Mode");
+    OledPrintln("Relay Mode");
   #endif
 
   #if (Battery_mAh_Source == 1)  
     Debug.println("Battery_mAh_Source = 1 - Get battery capacities from the FC");
-    OledDisplayln("mAh from FC");
+    OledPrintln("mAh from FC");
   #elif (Battery_mAh_Source == 2)
     Debug.println("Battery_mAh_Source = 2 - Define battery capacities in this firmware");  
-    OledDisplayln("mAh defined in fw");
+    OledPrintln("mAh defined in fw");
   #elif (Battery_mAh_Source == 3)
     Debug.println("Battery_mAh_Source = 3 - Define battery capacities in the LUA script");
-    OledDisplayln("Define mAh in LUA");     
+    OledPrintln("Define mAh in LUA");     
   #else
     #error You must define at least one Battery_mAh_Source. Please correct.
   #endif            
 
   #if (SPort_Serial == 1) 
     Debug.println("Using Serial_1 for S.Port");     
-    OledDisplayln("S.PORT is Serial1");  
+    OledPrintln("S.PORT is Serial1");  
   #else
     Debug.println("Using Serial_3 for S.Port");
-    OledDisplayln("S.PORT is Serial3");       
+    OledPrintln("S.PORT is Serial3");       
   #endif  
 
   #if (RSSI_Source == 0)
     Debug.println("Default RSSI_Source");
-    OledDisplayln("default RSSI_Source"); 
+    OledPrintln("default RSSI_Source"); 
   #elif (RSSI_Source == 1)
     Debug.println("RSSI from PWM channel");
-    OledDisplayln("RSSI frm PWM channel");  
+    OledPrintln("RSSI frm PWM channel");  
   #elif (RSSI_Source == 2)
     Debug.println("RSSI from SiK/Mavlink");
-    OledDisplayln("RSSI frm SiK/Mavlink");     
+    OledPrintln("RSSI frm SiK/Mavlink");     
   #elif (RSSI_Source == 3)
     Debug.println("Dummy RSSI = 70%");
-    OledDisplayln("Dummy RSSI = 70%");    // for debugging only         
+    OledPrintln("Dummy RSSI = 70%");    // for debugging only         
   #endif
 
   #if (FC_Mavlink_IO == 0)  // Serial
     Debug.println("Mavlink Serial In");
-    OledDisplayln("Mavlink Serial In");
+    OledPrintln("Mavlink Serial In");
   #endif  
 
   #if (FC_Mavlink_IO == 1)  // BT
     Debug.println("Mavlink BT In");
-    OledDisplayln("Mavlink BT In");
+    OledPrintln("Mavlink BT In");
   #endif  
 
   #if (FC_Mavlink_IO == 2)  // WiFi
     Debug.println("Mavlink WiFi In");
-    OledDisplayln("Mavlink WiFi In");
+    OledPrintln("Mavlink WiFi In");
   #endif  
 
   #if (FC_Mavlink_IO == 3)  // SD / TF
     Debug.println("Mavlink SD In");
-    OledDisplayln("Mavlink SD In");
+    OledPrintln("Mavlink SD In");
   #endif  
 
   #if (GCS_Mavlink_IO == 0)  // Serial
     Debug.println("Mavlink Serial Out");
-    OledDisplayln("Mavlink Serial Out");
+    OledPrintln("Mavlink Serial Out");
   #endif  
 
   #if (GCS_Mavlink_IO == 1)  // Bluetooth
     Debug.println("Mavlink BT Out");
-    OledDisplayln("Mavlink BT Out");
+    OledPrintln("Mavlink BT Out");
   #endif  
   
  #if (GCS_Mavlink_IO == 2)  // WiFi
     Debug.println("Mavlink WiFi Out");
-    OledDisplayln("Mavlink WiFi Out");
+    OledPrintln("Mavlink WiFi Out");
  #endif
 
  #if defined GCS_Mavlink_SD
     Debug.println("Mavlink SD Out");
-    OledDisplayln("Mavlink SD Out");
+    OledPrintln("Mavlink SD Out");
  #endif
 
  Debug.println("Waiting for telemetry"); 
- OledDisplayln("Waiting for telem");
+ OledPrintln("Waiting for telem");
 
 // ************************ Setup Bluetooth ***************************  
   #if (FC_Mavlink_IO == 1) || (GCS_Mavlink_IO == 1) // Bluetooth 
@@ -1281,22 +859,22 @@ void setup()  {
   #if ((FC_Mavlink_IO == 3) || defined GCS_Mavlink_SD)  // SD Card
     if(!SD.begin()){   
         Debug.println("No SD card reader found. Ignoring SD!"); 
-        OledDisplayln("No SD reader");
-        OledDisplayln("Ignoring!");
+        OledPrintln("No SD reader");
+        OledPrintln("Ignoring!");
         sdStatus = 0; // 0=no reader, 1=reader found, 2=SD found, 3=open for append 
                       // 4=open for read, 5=eof detected, 9=failed
     } else {
       Debug.println("SD card reader mount OK");
-      OledDisplayln("SD drv mount OK");
+      OledPrintln("SD drv mount OK");
       uint8_t cardType = SD.cardType();
       sdStatus = 1;
       if(cardType == CARD_NONE){
           Serial.println("No SD card found");
-          OledDisplayln("No SD card");
-          OledDisplayln("Ignoring!");      
+          OledPrintln("No SD card");
+          OledPrintln("Ignoring!");      
       } else {
         Debug.println("SD card found");
-        OledDisplayln("SD card found");
+        OledPrintln("SD card found");
         sdStatus = 2;
 
         Debug.printf("Total space: %lluMB\n", SD.totalBytes() / (1024 * 1024));
@@ -1332,7 +910,7 @@ void setup()  {
           sprintf(cPath, "%s", fnPath[i].c_str());  // Select the path
           Debug.print(cPath); Debug.println(" selected "); 
           Debug.println("Reading SD card");
-          OledDisplayln("Reading SD card");
+          OledPrintln("Reading SD card");
           file = SD.open(cPath);
           if(!file){
             Debug.printf("Can't open file: %s\n", cPath);
@@ -1401,13 +979,13 @@ void loop() {            // For WiFi only
       wifi = server.available();              // listen for incoming clients 
       if(wifi) {
         Debug.println("New client connected"); 
-        OledDisplayln("New client ok!");      
+        OledPrintln("New client ok!");      
         while (wifi.connected()) {            // loop while the client's connected
           main_loop(); 
         }
       wifi.stop();
       Debug.println("Client disconnected");
-      OledDisplayln("Client discnnct!");      
+      OledPrintln("Client discnnct!");      
       } else {
          main_loop();
      } 
@@ -1434,7 +1012,7 @@ void main_loop() {
   if (!FC_To_RingBuffer()) {  //  check for SD eof
     if (sdStatus == 5) {
       Debug.println("End of SD file");
-      OledDisplayln("End of SD file");  
+      OledPrintln("End of SD file");  
       sdStatus = 0;  // closed after reading   
     }
   }
@@ -1459,7 +1037,7 @@ void main_loop() {
   if(mavGood && (millis() - hb_millis) > 6000)  {   // if no heartbeat from APM in 6s then assume mav not connected
     mavGood=false;
     Debug.println("Heartbeat timed out! Mavlink not connected"); 
-    OledDisplayln("Mavlink lost!");       
+    OledPrintln("Mavlink lost!");       
     hb_count = 0;
    } 
    
@@ -1468,7 +1046,7 @@ void main_loop() {
     if(millis()-rds_millis > 5000) {
     rds_millis=millis();
     Debug.println("Requesting data streams"); 
-    OledDisplayln("Reqstg datastreams");    
+    OledPrintln("Reqstg datastreams");    
     RequestDataStreams();   // must have Teensy Tx connected to Taranis/FC rx  (When SRx not enumerated)
     }
   }
@@ -1501,13 +1079,13 @@ void main_loop() {
       Request_Param_Read(364);    // Request Bat2 capacity
       Request_Param_Read(364);    
       Debug.println("Battery capacities requested");
-      OledDisplayln("Bat mAh from FC");    
+      OledPrintln("Bat mAh from FC");    
       ap_bat_paramsReq = true;
     } else {
       if (ap_bat_paramsRead &&  (!parm_msg_shown)) {
         parm_msg_shown = true; 
         Debug.println("Battery params successfully read"); 
-        OledDisplayln("Bat params read ok"); 
+        OledPrintln("Bat params read ok"); 
       }
     } 
   }
@@ -1832,7 +1410,7 @@ void MavToRingBuffer() {
       if (MavRingBuff.isFull()) {
         BufLedState = HIGH;
         Debug.println("MavRingBuff full. Dropping records!");
-     //   OledDisplayln("Mav buffer full!"); 
+     //   OledPrintln("Mav buffer full!"); 
       }
        else {
         BufLedState = LOW;
@@ -1977,7 +1555,7 @@ void DecodeOneMavFrame() {
             if(hb_count >= 3) {        // If  3 heartbeats from MavLink then we are connected
               mavGood=true;
               Debug.println("mavgood=true");
-               OledDisplayln("Mavlink good !");      
+               OledPrintln("Mavlink good !");      
               hb_count=0;
               }
           }
@@ -2089,7 +1667,6 @@ void DecodeOneMavFrame() {
          #endif     
              
          PackSensorTable(0x5003, 0);
-         PackSensorTable(0x5007, 0);
          
          break;
         case MAVLINK_MSG_ID_SYSTEM_TIME:   // #2
@@ -2637,7 +2214,7 @@ void DecodeOneMavFrame() {
             else if(ap_voltage_battery2 > 4200 && ap_cell_count2 != 3) ap_cell_count2 = 2;
             else ap_cell_count2 = 0;
    
-          #if defined Mav_Debug_All || defined Mav_Debug_Batteriestery2
+          #if defined Mav_Debug_All || defined Debug_Batteries
             Debug.print("Mavlink in #181 Battery2: ");        
             Debug.print(" Bat volts=");
             Debug.print((float)ap_voltage_battery2 / 1000, 3);   // now V
@@ -3161,7 +2738,7 @@ void ShowPeriod() {
   prev_millis=now_millis;
 }
 //***************************************************
-void OledDisplayln(String S) {
+void OledPrintln(String S) {
 #if (Target_Board == 3) 
   if (row>(max_row-1)) {  // last line    0 thru max_row-1
     
@@ -3185,6 +2762,31 @@ void OledDisplayln(String S) {
   row++;
 #endif  
 }
+//***************************************************
+void OledPrint(String S) {
+#if (Target_Board == 3) 
+  if (row>(max_row-1)) {  // last line    0 thru max_row-1
+    
+    display.clearDisplay();
+    display.setCursor(0,0);
+    
+    for (int i = 0; i < (max_row-1); i++) {     // leave space for new line at the bottom
+                                                //   if (i > 1) {   // don't scroll the 2 heading lines
+      if (i >= 0) {         
+        memset(OL[i].OLx, '\0', sizeof(OL[i].OLx));  // flush          
+        strncpy(OL[i].OLx, OL[i+1].OLx, sizeof(OL[i+1].OLx));
+      }
+      display.print(OL[i].OLx);
+    }
+    display.display();
+    row=max_row-1;
+  }
+  display.print(S);
+  display.display();
+  strncpy(OL[row].OLx, S.c_str(), max_col-1 );  
+  row++;
+#endif  
+}
 
 //************************************************************
  #if ((FC_Mavlink_IO == 2) || (GCS_Mavlink_IO == 2)) //  WiFi
@@ -3200,14 +2802,14 @@ void OledDisplayln(String S) {
       Debug.print("AP Server started. SSID = ");
       Debug.println(String(APssid));
       
-      OledDisplayln("WiFi AP SSID =");
-      OledDisplayln(String(APssid));
-      OledDisplayln(localIP.toString());  
+      OledPrintln("WiFi AP SSID =");
+      OledPrintln(String(APssid));
+      OledPrintln(localIP.toString());  
       
       #if (WiFi_Protocol == 2)  // UDP
         udp.begin(udp_localPort);
         Debug.printf("UDP started, listening on IP %s, UDP port %d\n", WiFi.softAPIP().toString().c_str(), udp_localPort);      
-        OledDisplayln("UDP ok port 14550");                 
+        OledPrintln("UDP ok port 14550");                 
       #endif
       
       wifiSuGood = true;
@@ -3217,7 +2819,7 @@ void OledDisplayln(String S) {
       uint8_t retry = 0;
       Debug.print("Trying to connect to ");  
       Debug.print(STAssid); 
-      OledDisplayln("WiFi trying ..");
+      OledPrintln("WiFi trying ..");
 
       WiFi.disconnect(true);   // To circumvent "wifi: Set status to INIT" error bug
       delay(500);
@@ -3241,27 +2843,27 @@ void OledDisplayln(String S) {
         Debug.print(wifi_rssi);
         Debug.println(" dBm");
 
-        OledDisplayln("Connected!");
-        OledDisplayln(localIP.toString());
+        OledPrintln("Connected!");
+        OledPrintln(localIP.toString());
         
         #if (WiFi_Protocol == 1)   // TCP
           server.begin();
           Debug.println("Server started");
-          OledDisplayln("Server started");
+          OledPrintln("Server started");
         #endif
 
         #if (WiFi_Protocol == 2)  // UDP
           udp.begin(udp_localPort);
           Debug.println("UDP started"); 
           Debug.printf("Remote IP %s, UDP port %d\n", WiFi.softAPIP().toString().c_str(), udp_localPort);      
-          OledDisplayln("UDP started");                 
+          OledPrintln("UDP started");                 
         #endif
         
         wifiSuGood = true;
         
       } else {
         Debug.println(" failed to connect");
-        OledDisplayln("Failed");
+        OledPrintln("Failed");
       }
     #endif
   }
@@ -3271,9 +2873,9 @@ void OledDisplayln(String S) {
     if (FtRemIP)  {
       FtRemIP = false;
       Debug.print("Client connected: Remote UDP IP: "); Debug.println(remoteIP);
-      OledDisplayln("Client connected");
-      OledDisplayln("Remote UDP IP =");
-      OledDisplayln(remoteIP.toString());
+      OledPrintln("Client connected");
+      OledPrintln("Remote UDP IP =");
+      OledPrintln(remoteIP.toString());
      }
   }
   #endif
@@ -3457,7 +3059,7 @@ void OpenSDForWrite() {
 
     strcpy(cPath, sPath.c_str());
     writeFile(SD, cPath , "Mavlink to FrSky Passthru by zs6buj");
-    OledDisplayln("Writing Tlog");
+    OledPrintln("Writing Tlog");
     sdStatus = 3;      
 }
 #endif
@@ -3477,3 +3079,225 @@ void SenseWiFiPin() {
     }
  #endif   
 }
+
+uint32_t Get_Volt_Average1(uint16_t mV)  {
+
+  if (bat1.avg_mV < 1) bat1.avg_mV = mV;  // Initialise first time
+
+ // bat1.avg_mV = (bat1.avg_mV * 0.9) + (mV * 0.1);  // moving average
+  bat1.avg_mV = (bat1.avg_mV * 0.6666) + (mV * 0.3333);  // moving average
+  Accum_Volts1(mV);  
+  return bat1.avg_mV;
+}
+//***********************************************************************
+uint32_t Get_Current_Average1(uint16_t dA)  {   // in 10*milliamperes (1 = 10 milliampere)
+  
+  Accum_mAh1(dA);  
+  
+  if (bat1.avg_dA < 1){
+    bat1.avg_dA = dA;  // Initialise first time
+  }
+
+  bat1.avg_dA = (bat1.avg_dA * 0.6666) + (dA * 0.333);  // moving average
+
+  return bat1.avg_dA;
+  }
+
+void Accum_Volts1(uint32_t mVlt) {    //  mV   milli-Volts
+  bat1.tot_volts += (mVlt / 1000);    // Volts
+  bat1.samples++;
+}
+
+void Accum_mAh1(uint32_t dAs) {        //  dA    10 = 1A
+  if (bat1.ft) {
+    bat1.prv_millis = millis() -1;   // prevent divide zero
+    bat1.ft = false;
+  }
+  uint32_t period = millis() - bat1.prv_millis;
+  bat1.prv_millis = millis();
+    
+  double hrs = (float)(period / 3600000.0f);  // ms to hours
+
+  bat1.mAh = dAs * hrs;     //  Tiny dAh consumed this tiny period di/dt
+ // bat1.mAh *= 100;        //  dA to mA  
+  bat1.mAh *= 10;           //  dA to mA ?
+  bat1.mAh *= 1.0625;       // Emirical adjustment Markus Greinwald 2019/05/21
+  bat1.tot_mAh += bat1.mAh;   //   Add them all in
+}
+
+float Total_mAh1() {
+  return bat1.tot_mAh;
+}
+
+float Total_mWh1() {                                     // Total energy consumed bat1
+  return bat1.tot_mAh * (bat1.tot_volts / bat1.samples);
+}
+//***********************************************************
+uint32_t Get_Volt_Average2(uint16_t mV)  {
+  
+  if (bat2.avg_mV == 0) bat2.avg_mV = mV;  // Initialise first time
+
+  bat2.avg_mV = (bat2.avg_mV * 0.666) + (mV * 0.333);  // moving average
+  Accum_Volts2(mV);  
+  return bat2.avg_mV;
+}
+  
+uint32_t Get_Current_Average2(uint16_t dA)  {
+
+  if (bat2.avg_dA == 0) bat2.avg_dA = dA;  // Initialise first time
+
+  bat2.avg_dA = (bat2.avg_dA * 0.666) + (dA * 0.333);  // moving average
+
+  Accum_mAh2(dA);  
+  return bat2.avg_dA;
+  }
+
+void Accum_Volts2(uint32_t mVlt) {    //  mV   milli-Volts
+  bat2.tot_volts += (mVlt / 1000);    // Volts
+  bat2.samples++;
+}
+
+void Accum_mAh2(uint32_t dAs) {        //  dA    10 = 1A
+  if (bat2.ft) {
+    bat2.prv_millis = millis() -1;   // prevent divide zero
+    bat2.ft = false;
+  }
+  uint32_t period = millis() - bat2.prv_millis;
+  bat2.prv_millis = millis();
+    
+ double hrs = (float)(period / 3600000.0f);  // ms to hours
+
+  bat2.mAh = dAs * hrs;   //  Tiny dAh consumed this tiny period di/dt
+ // bat2.mAh *= 100;        //  dA to mA  
+  bat2.mAh *= 10;        //  dA to mA ?
+  bat2.mAh *= 1.0625;       // Emirical adjustment Markus Greinwald 2019/05/21 
+  bat2.tot_mAh += bat2.mAh;   //   Add them all in
+}
+
+float Total_mAh2() {
+  return bat2.tot_mAh;
+}
+
+float Total_mWh2() {                                     // Total energy consumed bat1
+  return bat2.tot_mAh * (bat2.tot_volts / bat2.samples);
+}
+//*********************************************************************************
+uint32_t GetBaud(uint8_t rxPin) {
+  pinMode(rxPin, INPUT);       
+  digitalWrite (rxPin, HIGH); // pull up enabled for noise reduction ?
+
+  uint32_t gb_baud = GetConsistent(rxPin);
+  while (gb_baud == 0) {
+    if(ftGetBaud) {
+      ftGetBaud = false;
+    }
+    Debug.print("."); 
+    gb_baud = GetConsistent(rxPin);
+  } 
+  if (!ftGetBaud) {
+    Debug.println();
+  }
+
+  Debug.print("Telem found at "); Debug.print(gb_baud);  Debug.println(" b/s");
+  OledPrintln("Telem found at " + String(gb_baud));
+
+  return(gb_baud);
+}
+
+uint32_t GetConsistent(uint8_t rxPin) {
+  uint32_t t_baud[5];
+
+  while (true) {  
+    t_baud[0] = SenseUart(rxPin);
+    delay(10);
+    t_baud[1] = SenseUart(rxPin);
+    delay(10);
+    t_baud[2] = SenseUart(rxPin);
+    delay(10);
+    t_baud[3] = SenseUart(rxPin);
+    delay(10);
+    t_baud[4] = SenseUart(rxPin);
+    #if defined Debug_All || defined Debug_Baud
+      Debug.print("  t_baud[0]="); Debug.print(t_baud[0]);
+      Debug.print("  t_baud[1]="); Debug.print(t_baud[1]);
+      Debug.print("  t_baud[2]="); Debug.print(t_baud[2]);
+      Debug.print("  t_baud[3]="); Debug.println(t_baud[3]);
+    #endif  
+    if (t_baud[0] == t_baud[1]) {
+      if (t_baud[1] == t_baud[2]) {
+        if (t_baud[2] == t_baud[3]) { 
+          if (t_baud[3] == t_baud[4]) {   
+            #if defined Debug_All || defined Debug_Baud    
+              Debug.print("Consistent baud found="); Debug.println(t_baud[3]); 
+            #endif   
+            return t_baud[3]; 
+          }          
+        }
+      }
+    }
+  }
+}
+
+uint32_t SenseUart(uint8_t  rxPin) {
+
+uint32_t pw = 999999;  //  Pulse width in uS
+uint32_t min_pw = 999999;
+uint32_t su_baud = 0;
+
+#if defined Debug_All || defined Debug_Baud
+  Debug.print("rxPin ");  Debug.println(rxPin);
+#endif  
+
+ while(digitalRead(rxPin) == 1){ }  // wait for low bit to start
+  
+  for (int i = 0; i < 10; i++) {
+    pw = pulseIn(rxPin,LOW);     // 1000mS timeout! Returns the length of the pulse in microseconds
+    SenseWiFiPin();
+    if (pw !=0) {
+      min_pw = (pw < min_pw) ? pw : min_pw;  // Choose the lowest
+    } else {
+       return 0;  // timeout - no telemetry
+    }
+  }
+ 
+  #if defined Debug_All || defined Debug_Baud
+    Debug.print("pw="); Debug.print(pw); Debug.print("  min_pw="); Debug.println(min_pw);
+  #endif
+
+  switch(min_pw) {   
+    case 3 ... 11:     
+     su_baud = 115200;
+      break;
+    case 12 ... 19:  
+     su_baud = 57600;
+      break;
+     case 20 ... 28:  
+     su_baud = 38400;
+      break; 
+    case 29 ... 39:  
+     su_baud = 28800;
+      break;
+    case 40 ... 59:  
+     su_baud = 19200;
+      break;
+    case 60 ... 79:  
+     su_baud = 14400;
+      break;
+    case 80 ... 149:  
+     su_baud = 9600;
+      break;
+    case 150 ... 299:  
+     su_baud = 4800;
+      break;
+     case 300 ... 599:  
+     su_baud = 2400;
+      break;
+     case 600 ... 1199:  
+     su_baud = 1200;  
+      break;                        
+    default:  
+     su_baud = 0;            
+ }
+
+ return su_baud;
+} 
